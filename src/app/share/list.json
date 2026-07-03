@@ -255,7 +255,7 @@
 	},
 	{
 		"name": "Tearable UI",
-		"logo": "blob:https://www.yysuni.com/eb24e1ef-6988-4e8f-9915-51ab70a5fcd0",
+		"logo": "/images/share/5ec6be11bd351e3e.webp",
 		"url": "https://pushmatrix.github.io/tearable/",
 		"description": "将页面交互，变成一张张可以撕破的画布",
 		"tags": [
@@ -265,7 +265,7 @@
 	},
 	{
 		"name": "Flux Pic Shader",
-		"logo": "blob:https://www.yysuni.com/2ae49d95-cde7-4a10-bdd4-f66f81ce4065",
+		"logo": "/images/share/78a58c0955934e8d.webp",
 		"url": "https://shaders.fluxpic.com/",
 		"description": "流体动画工具，说不定以后可以参考",
 		"tags": [
@@ -275,7 +275,7 @@
 	},
 	{
 		"name": "Koi Pond",
-		"logo": "blob:https://www.yysuni.com/1e032671-0bdb-4658-a4f1-b38b02eb8fc2",
+		"logo": "/images/share/a20a5149379578ee.webp",
 		"url": "https://www.bubbbly.com/app/koi-pond.html",
 		"description": "创意和美工都很棒",
 		"tags": [
