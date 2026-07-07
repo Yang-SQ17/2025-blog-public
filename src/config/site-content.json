@@ -55,6 +55,13 @@
 			"value": "9564200@qq.com",
 			"label": "",
 			"order": 1
+		},
+		{
+			"id": "button-1783418967411",
+			"type": "wechat",
+			"value": "/images/social-buttons/8067b28090305f0c.jpg",
+			"label": "",
+			"order": 3
 		}
 	],
 	"clockShowSeconds": false,
