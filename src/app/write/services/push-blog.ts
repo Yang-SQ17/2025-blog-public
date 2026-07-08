@@ -72,12 +72,10 @@ export async function pushBlog(params: PushBlogParams): Promise<void> {
 	if (allLocalImages.length > 0) {
 		toast.info('正在上传图片...')
 		for (const { img, id } of allLocalImages) {
-			const hash = img.hash || (await hashFileSHA256(img.file))
-			const ext = getFileExt(img.file.name)
-			const filename = `${hash}${ext}`
+			const filename = img.file.name
 			const publicPath = `/blogs/${form.slug}/img/${filename}`
 
-			if (!uploadedHashes.has(hash)) {
+			if (!uploadedHashes.has(filename)) {
 				const path = `${basePath}/img/${filename}`
 				const contentBase64 = await fileToBase64NoPrefix(img.file)
 				// create blob for image
@@ -88,7 +86,7 @@ export async function pushBlog(params: PushBlogParams): Promise<void> {
 					type: 'blob',
 					sha: blobData.sha
 				})
-				uploadedHashes.add(hash)
+				uploadedHashes.add(filename)
 			}
 
 			// replace placeholder in markdown
