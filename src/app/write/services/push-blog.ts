@@ -78,7 +78,7 @@ export async function pushBlog(params: PushBlogParams): Promise<void> {
 			const publicPath = `/blogs/${form.slug}/img/${filename}`
 
 			if (!uploadedHashes.has(hash)) {
-				const path = `${basePath}/${filename}`
+				const path = `${basePath}/img/${filename}`
 				const contentBase64 = await fileToBase64NoPrefix(img.file)
 				// create blob for image
 				const blobData = await createBlob(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, contentBase64, 'base64')
