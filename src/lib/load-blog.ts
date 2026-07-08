@@ -34,7 +34,13 @@ export async function loadBlog(slug: string): Promise<LoadedBlog> {
 	if (!mdRes.ok) {
 		throw new Error('Blog not found')
 	}
-	const markdown = await mdRes.text()
+	let markdown = await mdRes.text()
+
+	// 自动将相对路径图片转为绝对路径，避免部署后 404
+	markdown = markdown.replace(/!\[([^\]]*)\]\(((?!https?:\/\/|\/|#)[^)]+)\)/g, (_, alt, path) => {
+		const cleanPath = path.replace(/^\.\//, '')
+		return `![${alt}](/blogs/${slug}/${cleanPath})`
+	})
 
 	return {
 		slug,
