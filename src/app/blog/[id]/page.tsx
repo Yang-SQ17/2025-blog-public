@@ -1,183 +1,96 @@
-import { toBase64Utf8, getRef, createTree, createCommit, updateRef, createBlob, type TreeItem } from '@/lib/github-client'
-import { fileToBase64NoPrefix, hashFileSHA256 } from '@/lib/file-utils'
-import { prepareBlogsIndex } from '@/lib/blog-index'
-import { getAuthToken } from '@/lib/auth'
-import { GITHUB_CONFIG } from '@/consts'
-import type { ImageItem } from '../types'
-import { getFileExt } from '@/lib/utils'
-import { toast } from 'sonner'
-import { formatDateTimeLocal } from '../stores/write-store'
+'use client'
 
-export type PushBlogParams = {
-	form: {
-		slug: string
-		title: string
-		md: string
-		tags: string[]
-		date?: string
-		summary?: string
-		hidden?: boolean
-		category?: string
-	}
-	cover?: ImageItem | null
-	images?: ImageItem[]
-	mode?: 'create' | 'edit'
-	originalSlug?: string | null
-}
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import dayjs from 'dayjs'
+import { motion } from 'motion/react'
+import { BlogPreview } from '@/components/blog-preview'
+import { loadBlog, type BlogConfig } from '@/lib/load-blog'
+import { useReadArticles } from '@/hooks/use-read-articles'
+import LiquidGrass from '@/components/liquid-grass'
 
-export async function pushBlog(params: PushBlogParams): Promise<void> {
-	const { form, cover, images, mode = 'create', originalSlug } = params
+export default function Page() {
+	const params = useParams() as { id?: string | string[] }
+	const slug = Array.isArray(params?.id) ? params.id[0] : params?.id || ''
+	const router = useRouter()
+	const { markAsRead } = useReadArticles()
 
-	if (!form?.slug) throw new Error('需要 slug')
+	const [blog, setBlog] = useState<{ config: BlogConfig; markdown: string; cover?: string } | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	const [loading, setLoading] = useState<boolean>(true)
 
-	if (mode === 'edit' && originalSlug && originalSlug !== form.slug) {
-		throw new Error('编辑模式下不支持修改 slug，请保持原 slug 不变')
-	}
+	useEffect(() => {
+		let cancelled = false
+		async function run() {
+			if (!slug) return
+			try {
+				setLoading(true)
+				const blogData = await loadBlog(slug)
 
-	// 获取认证 token（自动从全局认证状态获取）
-	const token = await getAuthToken()
-
-	toast.info('正在获取分支信息...')
-	const refData = await getRef(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, `heads/${GITHUB_CONFIG.BRANCH}`)
-	const latestCommitSha = refData.sha
-
-	const basePath = `public/blogs/${form.slug}`
-	const commitMessage = mode === 'edit' ? `更新文章: ${form.slug}` : `新增文章: ${form.slug}`
-
-	// collect all local images (content + cover)
-	const allLocalImages: Array<{ img: Extract<ImageItem, { type: 'file' }>; id: string }> = []
-
-	// add content images
-	for (const img of images || []) {
-		if (img.type === 'file') {
-			allLocalImages.push({ img, id: img.id })
-		}
-	}
-
-	// add cover if local
-	if (cover?.type === 'file') {
-		allLocalImages.push({ img: cover, id: cover.id })
-	}
-
-	toast.info('正在准备文件...')
-
-	const uploadedHashes = new Set<string>()
-	let mdToUpload = form.md
-	let coverPath: string | undefined
-
-	// prepare tree items for all files
-	const treeItems: TreeItem[] = []
-
-	// process all images
-	if (allLocalImages.length > 0) {
-		toast.info('正在上传图片...')
-		for (const { img, id } of allLocalImages) {
-			const filename = img.file.name
-			const publicPath = `/blogs/${form.slug}/img/${filename}`
-
-			if (!uploadedHashes.has(filename)) {
-				const path = `${basePath}/img/${filename}`
-				const contentBase64 = await fileToBase64NoPrefix(img.file)
-				// create blob for image
-				const blobData = await createBlob(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, contentBase64, 'base64')
-				treeItems.push({
-					path,
-					mode: '100644',
-					type: 'blob',
-					sha: blobData.sha
-				})
-				uploadedHashes.add(filename)
-			}
-
-			// replace placeholder in markdown
-			const placeholder = `local-image:${id}`
-			mdToUpload = mdToUpload.split(`(${placeholder})`).join(`(${publicPath})`)
-
-			// set cover path if this is the cover
-			if (cover?.type === 'file' && cover.id === id) {
-				coverPath = publicPath
+				if (!cancelled) {
+					setBlog(blogData)
+					setError(null)
+					markAsRead(slug)
+				}
+			} catch (e: any) {
+				if (!cancelled) setError(e?.message || '加载失败')
+			} finally {
+				if (!cancelled) setLoading(false)
 			}
 		}
+		run()
+		return () => {
+			cancelled = true
+		}
+	}, [slug, markAsRead])
+
+	const title = useMemo(() => (blog?.config.title ? blog.config.title : slug), [blog?.config.title, slug])
+	const date = useMemo(() => dayjs(blog?.config.date).format('YYYY年 M月 D日'), [blog?.config.date])
+	const tags = blog?.config.tags || []
+
+	const handleEdit = () => {
+		router.push(`/write/${slug}`)
 	}
 
-	// 自动将相对路径图片转为绝对路径
-	mdToUpload = mdToUpload.replace(/!\[([^\]]*)\]\(((?!https?:\/\/|\/|#)[^)]+)\)/g, (_, alt, path) => {
-		const cleanPath = path.replace(/^\.\//, '')
-		return `![${alt}](/blogs/${form.slug}/${cleanPath})`
-	})
-
-	// handle external cover URL
-	if (cover?.type === 'url') {
-		coverPath = cover.url
+	if (!slug) {
+		return <div className='text-secondary flex h-full items-center justify-center text-sm'>无效的链接</div>
 	}
 
-	toast.info('正在创建文件...')
-
-	// create blob for index.md
-	const mdBlob = await createBlob(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, toBase64Utf8(mdToUpload), 'base64')
-	treeItems.push({
-		path: `${basePath}/index.md`,
-		mode: '100644',
-		type: 'blob',
-		sha: mdBlob.sha
-	})
-
-	// create blob for config.json
-	const dateStr = form.date || formatDateTimeLocal()
-	const config = {
-		title: form.title,
-		tags: form.tags,
-		date: dateStr,
-		summary: form.summary,
-		cover: coverPath,
-		hidden: form.hidden,
-		category: form.category
+	if (loading) {
+		return <div className='text-secondary flex h-full items-center justify-center text-sm'>加载中...</div>
 	}
 
-	const configBlob = await createBlob(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, toBase64Utf8(JSON.stringify(config, null, 2)), 'base64')
-	treeItems.push({
-		path: `${basePath}/config.json`,
-		mode: '100644',
-		type: 'blob',
-		sha: configBlob.sha
-	})
+	if (error) {
+		return <div className='flex h-full items-center justify-center text-sm text-red-500'>{error}</div>
+	}
 
-	// prepare and create blob for blogs index
-	const indexJson = await prepareBlogsIndex(
-		token,
-		GITHUB_CONFIG.OWNER,
-		GITHUB_CONFIG.REPO,
-		{
-			slug: form.slug,
-			title: form.title,
-			tags: form.tags,
-			date: dateStr,
-			summary: form.summary,
-			cover: coverPath,
-			hidden: form.hidden,
-			category: form.category
-		},
-		GITHUB_CONFIG.BRANCH
+	if (!blog) {
+		return <div className='text-secondary flex h-full items-center justify-center text-sm'>文章不存在</div>
+	}
+
+	return (
+		<>
+			<BlogPreview
+				markdown={blog.markdown}
+				title={title}
+				tags={tags}
+				date={date}
+				summary={blog.config.summary}
+				cover={blog.cover || undefined}
+				slug={slug}
+			/>
+
+			<motion.button
+				initial={{ opacity: 0, scale: 0.6 }}
+				animate={{ opacity: 1, scale: 1 }}
+				whileHover={{ scale: 1.05 }}
+				whileTap={{ scale: 0.95 }}
+				onClick={handleEdit}
+				className='absolute top-4 right-6 rounded-xl border bg-white/60 px-6 py-2 text-sm backdrop-blur-sm transition-colors hover:bg-white/80 max-sm:hidden'>
+				编辑
+			</motion.button>
+
+			{slug === 'liquid-grass' && <LiquidGrass />}
+		</>
 	)
-	const indexBlob = await createBlob(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, toBase64Utf8(indexJson), 'base64')
-	treeItems.push({
-		path: 'public/blogs/index.json',
-		mode: '100644',
-		type: 'blob',
-		sha: indexBlob.sha
-	})
-
-	// create tree
-	toast.info('正在创建文件树...')
-	const treeData = await createTree(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, treeItems, latestCommitSha)
-
-	// create commit
-	toast.info('正在创建提交...')
-	const commitData = await createCommit(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, commitMessage, treeData.sha, [latestCommitSha])
-
-	// update branch reference
-	toast.info('正在更新分支...')
-	await updateRef(token, GITHUB_CONFIG.OWNER, GITHUB_CONFIG.REPO, `heads/${GITHUB_CONFIG.BRANCH}`, commitData.sha)
-
-	toast.success('发布成功！')
 }
