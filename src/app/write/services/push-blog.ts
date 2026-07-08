@@ -100,6 +100,12 @@ export async function pushBlog(params: PushBlogParams): Promise<void> {
 		}
 	}
 
+	// 自动将相对路径图片转为绝对路径
+	mdToUpload = mdToUpload.replace(/!\[([^\]]*)\]\(((?!https?:\/\/|\/|#)[^)]+)\)/g, (_, alt, path) => {
+		const cleanPath = path.replace(/^\.\//, '')
+		return `![${alt}](/blogs/${form.slug}/${cleanPath})`
+	})
+
 	// handle external cover URL
 	if (cover?.type === 'url') {
 		coverPath = cover.url
